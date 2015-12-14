@@ -13,6 +13,12 @@ using namespace cv;
 #include "SchaeferMLS.h"
 #include "CurveSignature.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/time.h>
+#endif //WIN32
+
 SchaeferMLS<double> smls;
 Mat visualized_curve;
 vector<Point> target_curve;
@@ -20,6 +26,35 @@ const int mls_def_type = 2;
 
 vector<Point2d> curve;
 vector<int> keyPointIndices;
+
+double GetTime(void)
+{
+#if _WIN32  															/* toto jede na Windows */
+    static int initialized = 0;
+    static LARGE_INTEGER frequency;
+    LARGE_INTEGER value;
+
+    if (!initialized) {                         							/* prvni volani */
+        initialized = 1;
+        if (QueryPerformanceFrequency(&frequency) == 0) {                   /* pokud hi-res pocitadlo neni podporovano */
+            //assert(0 && "HiRes timer is not available.");
+            exit(-1);
+        }
+    }
+
+    //assert(QueryPerformanceCounter(&value) != 0 && "This should never happen.");  /* osetreni chyby */
+    QueryPerformanceCounter(&value);
+    return (double)value.QuadPart / (double)frequency.QuadPart;  			/* vrat hodnotu v sekundach */
+
+#else                                         							/* toto jede na Linux/Unixovych systemech */
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) == -1) {        							/* vezmi cas */
+        //assert(0 && "gettimeofday does not work.");  						/* osetri chyby */
+        exit(-2);
+    }
+    return (double)tv.tv_sec + (double)tv.tv_usec/1000000.;  				/* vrat cas v sekundach */
+#endif
+}
 
 void MLSUpdate() {
 	static int framenum = 0;
@@ -74,7 +109,12 @@ void onMouse( int event, int x, int y, int flags, void* )
             shifts.resize(def_ctrl_pts.size(), Point2d(0.0, 0.0));
             shifts[touch_control_point] += touch - last_touch;
 
+            double t0 = GetTime();
             smls.deformCurveOneStep(curve, keyPointIndices, shifts);
+            double t1 = GetTime();
+
+            cout << "Time elapsed (host): " << t1 - t0 << " s" << endl;
+
             curve = smls.GetContourPts();
 
             last_touch = touch;
@@ -230,7 +270,7 @@ void testCompareContours(const Mat& src,
 }
 
 int main(int argc, char** argv) {
-    Mat src1 = imread("../car.png");
+    Mat src1 = imread("../blob.png");
 	if (src1.empty()) {
 		cerr << "can't read image" << endl; exit(0);
 	}
@@ -246,6 +286,9 @@ int main(int argc, char** argv) {
 
 	//Get curvature extrema points
 	vector<pair<char,int> > stringrep = CurvatureExtrema(a_p2d, a_p2d_smoothed,0.05,4.0);
+
+    // Print info
+    cout << "Curvature points: " << a_p2d.size() << endl;
 
 	//Start interactive deformation
 	src1.create(Size(700,600), CV_8UC3);
