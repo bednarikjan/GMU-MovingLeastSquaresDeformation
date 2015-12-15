@@ -19,7 +19,7 @@ using namespace cv;
 #include <sys/time.h>
 #endif //WIN32
 
-SchaeferMLS<double> smls;
+SchaeferMLS<double> smls(true);
 Mat visualized_curve;
 vector<Point> target_curve;
 const int mls_def_type = 2;
@@ -270,7 +270,7 @@ void testCompareContours(const Mat& src,
 }
 
 int main(int argc, char** argv) {
-    Mat src1 = imread("../blob.png");
+    Mat src1 = imread("img/blob.png");
 	if (src1.empty()) {
 		cerr << "can't read image" << endl; exit(0);
 	}
@@ -281,7 +281,7 @@ int main(int argc, char** argv) {
 	cv::transform(a,a,getRotationMatrix2D(Point2f(0,0),0,1.3));
 //	Mat tmp_curve_m(a); tmp_curve_m += Scalar(100,95);
 	
-	vector<Point2d> a_p2d, a_p2d_smoothed;
+    vector<Point2d> a_p2d, a_p2d_smoothed;
 	ConvertCurve(a, a_p2d);
 
 	//Get curvature extrema points

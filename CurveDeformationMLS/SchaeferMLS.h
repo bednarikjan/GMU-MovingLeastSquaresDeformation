@@ -14,14 +14,24 @@
 #include <numeric>
 #include <functional>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/video/video.hpp>
+
 #include "CurveCSS.h"
+
+// Our OpenCL wrapper
+#include "device_context.h"
+#include "error_codes.h"
 
 #define P2V(p) Vec2d((p).x,(p).y)
 #define V2P(v) Point2d((v)[0],(v)[1])
 
 template<typename T>
 class SchaeferMLS {
-	Mat_<double> A;
+private:
+    Mat_<double> A;
 	vector<vector<Matx22d> > As;
 	vector<double> mu_s;
 	vector<double> mu_r;
@@ -32,6 +42,14 @@ class SchaeferMLS {
 //	double m_original_curve_scale;
 	vector<vector<double> > m_w;
 	vector<Vec2d> m_vmp;
+
+    // OpenCL
+    bool usingOpenCL_;
+    DeviceContext* dc_;
+    cl::Kernel* kernel_;
+    cl::Buffer* contourBuf_;
+    cl::Buffer* keyPointsBuf_;
+    cl::Buffer* shiftedkeyPointsBuf_;
 	
 	template<typename V>
 	vector<Point2d> GetCurveAroundMean(const vector<Point_<V> >& p, const Point_<V>& p_star) {
@@ -102,7 +120,56 @@ class SchaeferMLS {
 		return covarmat;
 	}
 public:
-	void Init(const vector<Point_<T> >& curve, const vector<int>& control_idx) {
+    SchaeferMLS(bool useOpenCL = false) : usingOpenCL_(useOpenCL) {
+        if(usingOpenCL_) {
+            dc_ = new DeviceContext();
+            if(initOpenCL() != ERR_SUCCESS) {
+                std::cerr << "Failed to initializae OpenCL. Exiting now..." << std::endl;
+                exit(1);
+            }
+        }
+    }
+
+    cl_int initOpenCL() {
+        cl_int clErr = CL_SUCCESS;
+
+        clErr = dc_->InitPlatform(CL_DEVICE_TYPE_GPU);
+        if(clErr != ERR_SUCCESS)
+        {
+            std::cerr << "Failed to create OpenCL Context: " << WrapperErrorCodeToString(clErr) << std::endl;
+            return clErr;
+        }
+
+        dc_->SetBaseKernelsPath("../GMU-MovingLeastSquaresDeformation/CurveDeformationMLS/");
+
+        std::cout << "Using: " << dc_->GetPlatform().getInfo<CL_PLATFORM_NAME>() << "\n" <<
+                     dc_->GetDevice().getInfo<CL_DEVICE_NAME>() << std::endl;
+
+
+        std::cout << "Loading kernels..." << std::endl;
+        clErr = dc_->LoadProgram("Test_Kernels.cl");
+        if(clErr != ERR_SUCCESS)
+        {
+            std::cout << "Failed to load program: " << WrapperErrorCodeToString(clErr) << std::endl;
+            return clErr;
+        }
+
+        kernel_ = new cl::Kernel(*(dc_->GetProgram("Test_Kernels.cl")), "TestThroughtput", &clErr);
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Failed to create Kernel: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_KERNEL_CREATION_FAILED;
+        }
+
+        contourBuf_ = new cl::Buffer(dc_->GetContext(), CL_MEM_READ_ONLY, 1000 * sizeof(cl_double2), NULL, &clErr);
+        if(clErr)
+        {
+            std::cout << "Failed to create Buffer: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_BUFFER_CREATION_FAILED;
+        }
+    }
+
+    void Init(const vector<Point_<T> >& curve, const vector<int>& control_idx) {
 		As.clear();
 		mu_s.clear();
 		mu_r.clear();
@@ -228,8 +295,8 @@ public:
 
     void deformCurveOneStep(const vector<Point_<T> >& curve, const vector<int>& control_idx, const std::vector<cv::Point_<T> >& shifts) {
         As.clear();
-        mu_s.clear();
-        mu_r.clear();
+//        mu_s.clear();
+//        mu_r.clear();
         control_pts.clear();
         deformed_control_pts.clear();
         m_curve.clear();
@@ -287,6 +354,79 @@ public:
 
             m_curve[i] = cv::Point_<T>(newpoint.x,newpoint.y); // setting the result
         }
+    }
+
+    void deformCurveOneStepParallel(const vector<Point_<T> >& curve, const vector<int>& control_idx, const std::vector<cv::Point_<T> >& shifts) {
+        cl_int clErr;
+
+        control_pts.clear();
+        deformed_control_pts.clear();
+        m_curve.clear();
+        m_curve = curve;
+
+        control_pts.reserve(control_idx.size());
+        deformed_control_pts.reserve(control_idx.size());
+        for (int i=0; i<control_idx.size(); i++) {
+            control_pts.push_back(m_curve[control_idx[i]]);
+            deformed_control_pts.push_back(m_curve[control_idx[i]] + shifts[i]);
+        }
+
+        cl::Event profCopyEvent;
+        clErr = dc_->GetCmdQueue().enqueueWriteBuffer(contourBuf_, CL_TRUE, 0, 1000 * sizeof(cl_double2), &keyPoints[0], NULL, &profCopyEvent);
+
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Buffer write failed: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_BUFFER_WRITE_FAILED;
+        }
+
+        std::cout << "Copy elapsed: " << (double)(profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
+
+        clErr = deviceContext.GetCmdQueue().enqueueWriteBuffer(conturePointsBuffer, CL_TRUE, 0, 512 * sizeof(cl_float2), &conturePoints[0], NULL, &profCopyEvent);
+
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Buffer write failed: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_BUFFER_WRITE_FAILED;
+        }
+
+        std::cout << "Copy elapsed: " << (double)(profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
+
+        clErr = testKernel.setArg(0, conturePointsBuffer);
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_KERNEL_ARGSET_FAILED;
+        }
+
+        clErr = testKernel.setArg(1, keyPointsBuffer);
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_KERNEL_ARGSET_FAILED;
+        }
+
+        clErr = testKernel.setArg(2, 32);
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            return ERR_KERNEL_ARGSET_FAILED;
+        }
+
+        cl::NDRange gWorkItems(512);
+        cl::NDRange lWorkItems = cl::NullRange;
+
+        cl::Event profEvent;
+        clErr = deviceContext.GetCmdQueue().enqueueNDRangeKernel(testKernel, cl::NullRange, gWorkItems, lWorkItems, NULL, &profEvent);
+        if(clErr != CL_SUCCESS)
+        {
+            std::cout << "Failed to run kernel: " << OpenCLErrorCodeToString(clErr);
+            return ERR_KERNEL_RUN_FAILED;
+        }
+
+        profEvent.wait();
+        std::cout << "Elaped: " << (double)(profEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
+
     }
 	
 	const vector<Point_<T> >& GetControlPts() { return control_pts; }
