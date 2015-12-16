@@ -113,11 +113,14 @@ void onMouse( int event, int x, int y, int flags, void* )
             smls.deformCurveOneStep(curve, keyPointIndices, shifts);
             double t1 = GetTime();
 
-            cout << "Time elapsed (host): " << t1 - t0 << " s" << endl;
+            cout << "Time elapsed (host): " << (t1 - t0) * 1000.0 << " ms" << endl;
 
             curve = smls.GetContourPts();
-
             last_touch = touch;
+
+            if(smls.deformCurveOneStepParallel(curve, keyPointIndices, shifts) != ERR_SUCCESS) {
+                cerr << "SchaeferMLS: deformCurveOneStepParallel() failed" << endl;
+            }
 
             visualized_curve.setTo(0);
             smls.Draw(visualized_curve);
@@ -126,8 +129,7 @@ void onMouse( int event, int x, int y, int flags, void* )
 
 //            MLSUpdate();
 		}
-	}
-	
+	}	
 }
 
 void onTrackbar(int, void*)

@@ -140,21 +140,21 @@ public:
             return clErr;
         }
 
-        dc_->SetBaseKernelsPath("../GMU-MovingLeastSquaresDeformation/CurveDeformationMLS/");
+        dc_->SetBaseKernelsPath("../../GMU-MovingLeastSquaresDeformation/CurveDeformationMLS/");
 
         std::cout << "Using: " << dc_->GetPlatform().getInfo<CL_PLATFORM_NAME>() << "\n" <<
                      dc_->GetDevice().getInfo<CL_DEVICE_NAME>() << std::endl;
 
 
         std::cout << "Loading kernels..." << std::endl;
-        clErr = dc_->LoadProgram("Test_Kernels.cl");
+        clErr = dc_->LoadProgram("deformShape.cl");
         if(clErr != ERR_SUCCESS)
         {
             std::cout << "Failed to load program: " << WrapperErrorCodeToString(clErr) << std::endl;
             return clErr;
         }
 
-        kernel_ = new cl::Kernel(*(dc_->GetProgram("Test_Kernels.cl")), "TestThroughtput", &clErr);
+        kernel_ = new cl::Kernel(*(dc_->GetProgram("deformShape.cl")), "deformShape", &clErr);
         if(clErr != CL_SUCCESS)
         {
             std::cout << "Failed to create Kernel: " << OpenCLErrorCodeToString(clErr) << std::endl;
@@ -356,7 +356,7 @@ public:
         }
     }
 
-    void deformCurveOneStepParallel(const vector<Point_<T> >& curve, const vector<int>& control_idx, const std::vector<cv::Point_<T> >& shifts) {
+    cl_int deformCurveOneStepParallel(const vector<Point_<T> >& curve, const vector<int>& control_idx, const std::vector<cv::Point_<T> >& shifts) {
         cl_int clErr;
 
         control_pts.clear();
@@ -372,7 +372,7 @@ public:
         }
 
         cl::Event profCopyEvent;
-        clErr = dc_->GetCmdQueue().enqueueWriteBuffer(contourBuf_, CL_TRUE, 0, 1000 * sizeof(cl_double2), &keyPoints[0], NULL, &profCopyEvent);
+        clErr = dc_->GetCmdQueue().enqueueWriteBuffer(*contourBuf_, CL_TRUE, 0, 1000 * sizeof(cl_double2), &(m_curve[0]), NULL, &profCopyEvent);
 
         if(clErr != CL_SUCCESS)
         {
@@ -380,44 +380,27 @@ public:
             return ERR_BUFFER_WRITE_FAILED;
         }
 
-        std::cout << "Copy elapsed: " << (double)(profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
+        std::cout << "Time elapsed (copy to/from device): " << (double)(profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
 
-        clErr = deviceContext.GetCmdQueue().enqueueWriteBuffer(conturePointsBuffer, CL_TRUE, 0, 512 * sizeof(cl_float2), &conturePoints[0], NULL, &profCopyEvent);
-
+        clErr = kernel_->setArg(0, *contourBuf_);
         if(clErr != CL_SUCCESS)
         {
-            std::cout << "Buffer write failed: " << OpenCLErrorCodeToString(clErr) << std::endl;
-            return ERR_BUFFER_WRITE_FAILED;
-        }
-
-        std::cout << "Copy elapsed: " << (double)(profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profCopyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
-
-        clErr = testKernel.setArg(0, conturePointsBuffer);
-        if(clErr != CL_SUCCESS)
-        {
-            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            std::cout << "Failed to set kernel argument 0: " << OpenCLErrorCodeToString(clErr) << std::endl;
             return ERR_KERNEL_ARGSET_FAILED;
         }
 
-        clErr = testKernel.setArg(1, keyPointsBuffer);
+        clErr = kernel_->setArg(1, (cl_int)m_curve.size());
         if(clErr != CL_SUCCESS)
         {
-            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
+            std::cout << "Failed to set kernel argument 1: " << OpenCLErrorCodeToString(clErr) << std::endl;
             return ERR_KERNEL_ARGSET_FAILED;
         }
 
-        clErr = testKernel.setArg(2, 32);
-        if(clErr != CL_SUCCESS)
-        {
-            std::cout << "Failed to set kernel argument: " << OpenCLErrorCodeToString(clErr) << std::endl;
-            return ERR_KERNEL_ARGSET_FAILED;
-        }
-
-        cl::NDRange gWorkItems(512);
+        cl::NDRange gWorkItems(1024);
         cl::NDRange lWorkItems = cl::NullRange;
 
         cl::Event profEvent;
-        clErr = deviceContext.GetCmdQueue().enqueueNDRangeKernel(testKernel, cl::NullRange, gWorkItems, lWorkItems, NULL, &profEvent);
+        clErr = dc_->GetCmdQueue().enqueueNDRangeKernel(*kernel_, cl::NullRange, gWorkItems, lWorkItems, NULL, &profEvent);
         if(clErr != CL_SUCCESS)
         {
             std::cout << "Failed to run kernel: " << OpenCLErrorCodeToString(clErr);
@@ -425,7 +408,7 @@ public:
         }
 
         profEvent.wait();
-        std::cout << "Elaped: " << (double)(profEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
+        std::cout << "Time elapsed (device): " << (double)(profEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0 << " ms\n";
 
     }
 	

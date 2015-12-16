@@ -5,7 +5,7 @@ set (CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake")
 
 include(cotire)
 
-#add_definitions("-g")
+add_definitions("-g")
 
 find_package(OpenCV 2.4 REQUIRED)
 
@@ -14,7 +14,9 @@ include_directories(${OPENCL_INCLUDE_DIR})
 
 file(GLOB SOURCES ./*.cpp)
 
-add_executable(ShapeDeformation ${SOURCES})
+add_executable(ShapeDeformation
+    ${SOURCES}
+)
 	
 target_link_libraries(ShapeDeformation
 	${OpenCV_LIBS}
