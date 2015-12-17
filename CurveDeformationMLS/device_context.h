@@ -52,6 +52,20 @@ public:
 
     const std::string &GetBuildErrorInfo() const { return m_clBuildErrorInfo; }
 
+    //! \brief getEventTime Returns time span of the given 'i_event' (start to end) in [ms].
+    //! \param i_event
+    //! \return
+    //!
+    static double getEventTime(cl::Event i_event);
+
+    //! \brief iCeilTo Aligns work items count (int the given dimension) to the
+    //! integral multiply of the workgroup size (in the given dimension)
+    //! \param data
+    //! \param align_size
+    //! \return
+    //!
+    static unsigned int iCeilTo(unsigned int data, unsigned int align_size);
+
 protected:
     typedef std::map<std::string, cl::Program> ProgramsMap_t;
     typedef std::pair<std::string, cl::Program> ProgramsMapPair_t;

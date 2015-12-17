@@ -110,3 +110,14 @@ int DeviceContext::LoadProgram(const char *pszFilename)
 
     return ERR_SUCCESS;
 }
+
+double DeviceContext::getEventTime(cl::Event i_event)
+{
+    return double(i_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+                  i_event.getProfilingInfo<CL_PROFILING_COMMAND_START>()) / 1000000.0;
+}
+
+unsigned int DeviceContext::iCeilTo(unsigned int data, unsigned int align_size)
+{
+    return ((data + align_size - 1) / align_size) * align_size;
+}

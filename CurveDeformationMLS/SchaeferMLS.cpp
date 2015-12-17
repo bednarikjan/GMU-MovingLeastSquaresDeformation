@@ -25,6 +25,7 @@ vector<Point> target_curve;
 const int mls_def_type = 2;
 
 vector<Point2d> curve;
+vector<Point2d> curve2;
 vector<int> keyPointIndices;
 
 double GetTime(void)
@@ -109,6 +110,9 @@ void onMouse( int event, int x, int y, int flags, void* )
             shifts.resize(def_ctrl_pts.size(), Point2d(0.0, 0.0));
             shifts[touch_control_point] += touch - last_touch;
 
+            // debug
+            curve2 = curve;
+
             double t0 = GetTime();
             smls.deformCurveOneStep(curve, keyPointIndices, shifts);
             double t1 = GetTime();
@@ -118,7 +122,7 @@ void onMouse( int event, int x, int y, int flags, void* )
             curve = smls.GetContourPts();
             last_touch = touch;
 
-            if(smls.deformCurveOneStepParallel(curve, keyPointIndices, shifts) != ERR_SUCCESS) {
+            if(smls.deformCurveOneStepParallel(curve2, keyPointIndices, shifts) != ERR_SUCCESS) {
                 cerr << "SchaeferMLS: deformCurveOneStepParallel() failed" << endl;
             }
 
