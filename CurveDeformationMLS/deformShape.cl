@@ -93,12 +93,20 @@ __kernel void deformShape(  __constant double2 *contourPoints,
             double4 rh = (double4)(m_vmp.x, m_vmp.y, m_vmp.y, -m_vmp.x);
 
             double m_wDmu_s = m_w[idxG * numKeyPoints + i] / mu_s;
-            double4 As = (double4)( (lh.x * rh.x + lh.y * rh.y) * m_wDmu_s,
-                                    (lh.x * rh.z + lh.y * rh.w) * m_wDmu_s,
-                                    (lh.z * rh.x + lh.w * rh.y) * m_wDmu_s,
-                                    (lh.z * rh.z + lh.w * rh.w) * m_wDmu_s);
+            double4 as_i = (double4)((lh.x * rh.x + lh.y * rh.y) * m_wDmu_s,
+                                     (lh.x * rh.z + lh.y * rh.w) * m_wDmu_s,
+                                     (lh.z * rh.x + lh.w * rh.y) * m_wDmu_s,
+                                     (lh.z * rh.z + lh.w * rh.w) * m_wDmu_s);
+            double2 q_hat_i = q_hat[idxG * numKeyPoints + i];
+            double2 prod = (double2)(q_hat_i.x * as_i.x + q_hat_i.y * as_i.z,
+                                     q_hat_i.x * as_i.y + q_hat_i.y * as_i.w);
+            newpoint += prod;
         }
 
+        double scale = length(m_vmp) / length(newpoint);
+        newpoint = newpoint * scale + q_star;
+
+        contourPointsNew[idxG] = newpoint;
     }
 }
 

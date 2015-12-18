@@ -113,18 +113,18 @@ void onMouse( int event, int x, int y, int flags, void* )
             // debug
             curve2 = curve;
 
-            double t0 = GetTime();
-            smls.deformCurveOneStep(curve, keyPointIndices, shifts);
-            double t1 = GetTime();
+//            double t0 = GetTime();
+//            smls.deformCurveOneStep(curve, keyPointIndices, shifts);
+//            double t1 = GetTime();
 
-            cout << "Time elapsed (host): " << (t1 - t0) * 1000.0 << " ms" << endl;
-
-            curve = smls.GetContourPts();
-            last_touch = touch;
+//            cout << "Time elapsed (host): " << (t1 - t0) * 1000.0 << " ms" << endl;
 
             if(smls.deformCurveOneStepParallel(curve2, keyPointIndices, shifts) != ERR_SUCCESS) {
                 cerr << "SchaeferMLS: deformCurveOneStepParallel() failed" << endl;
             }
+
+            curve = smls.GetContourPts();
+            last_touch = touch;
 
             visualized_curve.setTo(0);
             smls.Draw(visualized_curve);
@@ -276,7 +276,7 @@ void testCompareContours(const Mat& src,
 }
 
 int main(int argc, char** argv) {
-    Mat src1 = imread("img/blob.png");
+    Mat src1 = imread("img/blob2.png");
 	if (src1.empty()) {
 		cerr << "can't read image" << endl; exit(0);
 	}
@@ -295,9 +295,10 @@ int main(int argc, char** argv) {
 
     // Print info
     cout << "Curvature points: " << a_p2d.size() << endl;
+    cout << "Control points:   " << stringrep.size() << endl;
 
 	//Start interactive deformation
-	src1.create(Size(700,600), CV_8UC3);
+    src1.create(Size(1000,1000), CV_8UC3);
     MLSDeformCurve(src1,a_p2d,stringrep);
 //    testCompareContours(src1, a_p2d, stringrep);
 }

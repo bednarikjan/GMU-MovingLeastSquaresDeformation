@@ -516,7 +516,7 @@ public:
 
 
         // Set problem size
-        cl::NDRange lWorkItems(64);
+        cl::NDRange lWorkItems(256);
         cl::NDRange gWorkItems(DeviceContext::iCeilTo(m_curve.size(), lWorkItems[0]));
 
         // debug
@@ -728,7 +728,7 @@ public:
             std::cout << "Buffer read failed: " << OpenCLErrorCodeToString(clErr) << std::endl;
             return ERR_BUFFER_WRITE_FAILED;
         }
-//        vec2PointVec(contourPointsNew, m_curve);
+        vec2PointVec(contourPointsNew, m_curve);
 
         // debug - compare weight
 //        debugVecB.resize(m_curve.size() * control_idx.size());
